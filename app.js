@@ -15,11 +15,17 @@ const ROLE = {
 };
 
 let DATA = null;
+let SHEET_TASK = null;
 const state = { q: '', owner: '', status: '', prios: new Set(), rtg: 'all', group: 'owner', sort: 'ai' };
 const review = location.hash.toLowerCase().includes('review') || location.search.toLowerCase().includes('review');
 
 /* ---------------- decryption ---------------- */
 const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function gunzip(bytes) {
+  const ds = new DecompressionStream('gzip');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
 async function decryptPayload(payload, passphrase) {
   const enc = new TextEncoder();
   const base = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
@@ -27,7 +33,9 @@ async function decryptPayload(payload, passphrase) {
     { name: 'PBKDF2', salt: b64(payload.salt), iterations: payload.iterations, hash: 'SHA-256' },
     base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(payload.iv) }, key, b64(payload.ct));
-  return JSON.parse(new TextDecoder().decode(plain));
+  let bytes = new Uint8Array(plain);
+  if (payload.gzip) bytes = await gunzip(bytes);
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 async function unlock(passphrase) {
@@ -76,7 +84,7 @@ function mdInline(s) {
     .replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => {
-      const safe = /^(https?:|\/|\.|#|mailto:)/i.test(u) ? u : '#';
+      const safe = /^(https?:|\/|\.|#|mailto:|tel:)/i.test(u) ? u : '#';
       return `<a href="${safe}" target="_blank" rel="noopener">${t}</a>`;
     });
 }
@@ -109,6 +117,74 @@ function md(src) {
   return html;
 }
 
+/* ---------------- artifact viewer ---------------- */
+const b64utf8 = (s) => btoa(unescape(encodeURIComponent(s)));
+function parseCSV(text, delim) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (ch !== '\r') cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter((r) => !(r.length === 1 && r[0] === ''));
+}
+function csvTable(text, ext) {
+  const rows = parseCSV(text, ext === 'tsv' ? '\t' : ','); if (!rows.length) return '<p class="md">(empty)</p>';
+  const cap = 250, t = rows.slice(0, cap), head = t[0] || [];
+  let h = '<div class="csv-wrap"><table class="csvt"><thead><tr>' + head.map((c) => `<th>${esc(c)}</th>`).join('') + '</tr></thead><tbody>';
+  h += t.slice(1).map((r) => '<tr>' + r.map((c) => `<td>${esc(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
+  if (rows.length > cap) h += `<div class="art-note">Showing first ${cap} of ${rows.length} rows.</div>`;
+  return h;
+}
+function renderArtifactBody(a) {
+  if (a.kind === 'md') return `<div class="md">${md(a.content)}</div>`;
+  if (a.kind === 'csv') return csvTable(a.content, a.ext);
+  if (a.kind === 'svg') return `<div class="art-svg"><img alt="${esc(a.name)}" src="data:image/svg+xml;base64,${b64utf8(a.content)}"></div>`;
+  if (a.content != null) return `<pre class="code"><code>${esc(a.content)}</code></pre>`;
+  return `<p class="md">${esc(a.note || 'Not viewable in-page — open it in the repo.')}</p><p class="md"><code>${esc(a.path || '')}</code></p>`;
+}
+function openArtifact(a) {
+  const back = SHEET_TASK ? `<button class="art-back" id="art-back">← back to ${esc(SHEET_TASK.id)}</button>` : '';
+  $('#sheet-body').innerHTML = `${back}
+    <div class="sheet-id">${esc(a.path || '')}</div>
+    <h2 class="art-title">${esc(a.name)}</h2>
+    <div class="art-view">${renderArtifactBody(a)}</div>`;
+  $('#sheet').scrollTop = 0;
+  const b = $('#art-back'); if (b && SHEET_TASK) b.onclick = () => openDetail(SHEET_TASK.id);
+  wireMdLinks(SHEET_TASK);
+}
+function resolveArtifact(t, href) {
+  const h = href.replace(/^\.\//, '').replace(/[#?].*$/, '').replace(/^\//, '');
+  const arts = (t.detail && t.detail.artifacts) || [];
+  let m = arts.find((a) => a.path === h || a.path.endsWith('/' + h));
+  if (!m) { const base = h.split('/').pop(); m = arts.find((a) => a.name === base); }
+  return m || null;
+}
+function artAction(t, a) {
+  if (a.content != null || a.kind === 'svg') { openArtifact(a); return; }
+  if (a.kind === 'withheld') { toast('Withheld (may contain credentials) — open securely in the repo'); return; }
+  navigator.clipboard?.writeText(a.path).catch(() => {}); toast('Path copied — open in the repo: ' + a.path);
+}
+function wireMdLinks(t) {
+  if (!t) return;
+  $$('#sheet-body .md a').forEach((aEl) => {
+    const href = aEl.getAttribute('href') || '';
+    if (/^(https?:|mailto:|tel:|#)/i.test(href)) return;
+    const art = resolveArtifact(t, href);
+    if (art) {
+      aEl.removeAttribute('target'); aEl.setAttribute('href', 'javascript:void(0)');
+      aEl.classList.add('artlink'); aEl.onclick = (e) => { e.preventDefault(); artAction(t, art); };
+    } else {
+      aEl.classList.add('deadlink'); aEl.removeAttribute('href'); aEl.removeAttribute('target');
+      aEl.title = 'Not included in this export — in the repo: ' + href;
+    }
+  });
+}
+
 /* ---------------- detail slide-over ---------------- */
 function openDetail(id) {
   const t = DATA.tasks.find((x) => x.id === id); if (!t) return;
@@ -116,9 +192,13 @@ function openDetail(id) {
   const rtg = isRTG(t);
   const sect = (title, body, cls = '') => (body && body.trim()) ? `<div class="sect ${cls}"><h3>${title}</h3><div class="md">${md(body)}</div></div>` : '';
   const arts = d.artifacts || [];
-  const artHtml = arts.length ? `<div class="sect"><h3>Artifacts in work/ (${d.artifactCount || arts.length})</h3><div class="artlist">` +
-    arts.map((a) => { const ext = (a.name.split('.').pop() || '?').slice(0, 4); return `<div class="art"><span class="ext">${esc(ext)}</span><span class="nm">${esc(a.name)}</span><span class="pth">${esc(a.path)}</span></div>`; }).join('') +
-    `</div>${(d.artifactCount || 0) > arts.length ? `<div class="art-note">+${d.artifactCount - arts.length} more in the repo</div>` : ''}</div>` : '';
+  const artHtml = arts.length ? `<div class="sect"><h3>Files in work/ (${d.artifactCount || arts.length}) — click to open</h3><div class="artlist">` +
+    arts.map((a, idx) => {
+      const ext = (a.ext || a.name.split('.').pop() || '?').slice(0, 4);
+      const act = (a.content != null || a.kind === 'svg') ? 'view →' : 'in repo';
+      return `<div class="art clickable" data-idx="${idx}"><span class="ext">${esc(ext)}</span><span class="nm">${esc(a.name)}</span><span class="pth">${esc(a.path)}</span><span class="art-act">${act}</span></div>`;
+    }).join('') +
+    `</div>${(d.artifactCount || 0) > arts.length ? `<div class="art-note">+${d.artifactCount - arts.length} more files in the repo</div>` : ''}</div>` : '';
   $('#sheet-body').innerHTML = `
     <div class="sheet-id">${esc(t.id)}</div>
     <h2>${esc(t.title)}</h2>
@@ -140,12 +220,19 @@ function openDetail(id) {
     ${sect('Recommended approach / options', d.recommended)}
     ${sect('Research findings', d.research)}
     ${sect('Company knowledge — deep dive', d.companyKnowledge)}
-    <div class="sheet-foot">Full brief + all files in the repo: <code>${esc(d.briefPath || '')}</code></div>`;
+    <div class="sheet-foot">${d.briefFull ? '<button class="brief-btn" id="brief-full-btn">Read the full brief →</button> · ' : ''}Repo path: <code>${esc(d.briefPath || '')}</code></div>`;
+  SHEET_TASK = t;
   const sh = $('#sheet');
   sh.classList.add('open'); sh.setAttribute('aria-hidden', 'false'); sh.scrollTop = 0;
   $('#sheet-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
   if (history.replaceState) history.replaceState(null, '', '#' + id);
+  // wire artifact rows
+  $$('#sheet-body .art').forEach((el) => el.onclick = () => { const a = arts[+el.dataset.idx]; if (a) artAction(t, a); });
+  // full brief
+  const bf = $('#brief-full-btn'); if (bf) bf.onclick = () => openArtifact({ name: 'brief.md (full)', path: d.briefPath, kind: 'md', content: d.briefFull });
+  // resolve in-brief links: internal → open the matching file; external → new tab; unmatched → de-link
+  wireMdLinks(t);
 }
 function closeDetail() {
   $('#sheet').classList.remove('open'); $('#sheet').setAttribute('aria-hidden', 'true');

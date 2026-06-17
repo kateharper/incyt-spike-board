@@ -1,0 +1,3 @@
+# Never publish the plaintext data or the build tooling (wordlist/scheme)
+data/tasks.json
+build/

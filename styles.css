@@ -239,7 +239,31 @@ body.review .review-bar{display:flex}
 .art .ext{font-family:var(--mono);font-size:10px;text-transform:uppercase;color:var(--ink-1000);background:var(--brand-light);border-radius:4px;padding:2px 5px;flex:none}
 .art .nm{color:var(--ink-200);font-weight:500}
 .art .pth{color:var(--ink-500);font-family:var(--mono);font-size:11px;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48%}
+.art.clickable{cursor:pointer;transition:border-color .13s,background .13s}
+.art.clickable:hover{border-color:var(--brand);background:var(--ink-850)}
+.art .art-act{margin-left:10px;flex:none;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-500)}
+.art.clickable:hover .art-act{color:var(--brand)}
+.art .pth{margin-left:auto}
 .art-note{font-size:12px;color:var(--ink-500);margin-top:8px}
+.md a.artlink{color:var(--brand-light);border-bottom:1px dashed rgba(167,222,255,.4);cursor:pointer}
+.md a.artlink::after{content:' ⎘';font-size:10px;opacity:.7}
+.md a.deadlink{color:var(--ink-300);border-bottom:1px dotted var(--ink-600);cursor:default}
+.art-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:6px 13px;border-radius:999px;
+  border:1px solid var(--ink-700);background:var(--ink-900);color:var(--ink-200);font-size:12.5px;font-weight:500;transition:.13s}
+.art-back:hover{border-color:var(--brand);color:var(--brand)}
+.art-title{font-size:18px;margin:4px 0 16px;word-break:break-word}
+.art-view{font-size:13.5px}
+.brief-btn{padding:6px 13px;border-radius:999px;border:1px solid var(--brand);background:rgba(4,161,255,.1);color:var(--brand);font-size:12px;font-weight:600;transition:.13s}
+.brief-btn:hover{background:rgba(4,161,255,.18)}
+.code{background:var(--ink-1000);border:1px solid var(--ink-800);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:0}
+.code code{font-family:var(--mono);font-size:12px;color:var(--ink-200);white-space:pre;line-height:1.55}
+.csv-wrap{overflow-x:auto;border:1px solid var(--ink-800);border-radius:10px}
+table.csvt{width:100%;border-collapse:collapse;font-size:12px}
+table.csvt th,table.csvt td{border:1px solid var(--ink-800);padding:6px 9px;text-align:left;vertical-align:top;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis}
+table.csvt th{background:var(--ink-900);color:var(--ink-100);font-weight:600;position:sticky;top:0}
+table.csvt tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+.art-svg{background:var(--ink-100);border-radius:12px;padding:24px;text-align:center;margin-bottom:14px}
+.art-svg img{max-width:100%;max-height:420px}
 .sheet-foot{margin-top:20px;padding-top:14px;border-top:1px solid var(--ink-800);font-size:12px;color:var(--ink-500)}
 .sheet-foot code{font-family:var(--mono);color:var(--ink-300)}
 @media(max-width:680px){.sheet-body{padding:20px 18px 50px}}
