@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+<title>INCYT Spikes — Team Dashboard</title>
+<meta name="description" content="Internal — passphrase protected.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- passphrase gate -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-mark"><span class="gate-dot"></span><span class="eyebrow" style="color:var(--brand)">Hyper Cybernetics · INCYT</span></div>
+    <h1>Spike Programme Dashboard</h1>
+    <p>This board contains internal INCYT material. Enter the passphrase shared with you to continue.</p>
+    <form id="gate-form" autocomplete="off">
+      <input id="gate-input" type="password" placeholder="passphrase" autocomplete="off" spellcheck="false" autofocus>
+      <button type="submit">Unlock</button>
+    </form>
+    <div class="gate-err" id="gate-err"></div>
+    <div class="gate-foot">Data is encrypted at rest (AES-256-GCM, PBKDF2). The page holds only an encrypted blob until you enter the passphrase.</div>
+  </div>
+</div>
+
+<!-- app -->
+<div id="app">
+  <header class="top">
+    <div class="top-inner">
+      <div class="brand-mark">
+        <span class="dot"></span>
+        <div><b>INCYT Spikes</b> &nbsp;<span>Team Dashboard</span></div>
+      </div>
+      <div class="top-stats" id="top-stats"></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="eyebrow" style="color:var(--brand)">94 spike tasks · ~72% AI-complete · peer-reviewed</div>
+      <h2>What we're building, who owns it, and what's ready to go</h2>
+      <p>Every task was researched, cross-checked against our own systems, and driven as far as an AI can. Below is each task's owner, priority, progress, the single fastest next step, and what's gating it. Filter by person or priority, or search.</p>
+    </section>
+
+    <div class="rtg-banner">
+      <span class="pill rtg-yes"><span class="dt"></span>RTG</span>
+      <div>A green <b>RTG (Ready To Go)</b> flag means Simon has reviewed and approved that item. Items without it are <b>awaiting review</b> — treat them as not-yet-confirmed.</div>
+    </div>
+
+    <div class="review-bar">
+      <b>Review mode</b> — toggle the RTG flag on any card. Changes are stored in your browser.
+      <span class="spacer"></span>
+      <button class="ghost" id="rtg-clear">Reset</button>
+      <button id="rtg-export">Export RTG state</button>
+    </div>
+
+    <section class="aids" id="aids"></section>
+
+    <div class="controls">
+      <div class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="q" type="search" placeholder="Search tasks, owners, next steps…" autocomplete="off">
+      </div>
+      <select id="f-owner"><option value="">All owners</option></select>
+      <select id="f-status"><option value="">All company status</option><option value="built">✅ Built</option><option value="partial">🟡 Partial</option><option value="explored">🔸 Explored</option><option value="none">⬜ None</option></select>
+      <span id="f-prio" class="seg-prio" style="display:flex;gap:6px">
+        <button class="pchip" data-p="P0"><span class="pdot"></span>P0</button>
+        <button class="pchip" data-p="P1"><span class="pdot"></span>P1</button>
+        <button class="pchip" data-p="P2"><span class="pdot"></span>P2</button>
+        <button class="pchip" data-p="P3"><span class="pdot"></span>P3</button>
+      </span>
+      <div class="segset" id="f-rtg">
+        <button data-v="all" class="on">All</button>
+        <button data-v="rtg">RTG only</button>
+        <button data-v="wait">Awaiting</button>
+      </div>
+      <div class="segset" id="f-group">
+        <button data-v="owner" class="on">By owner</button>
+        <button data-v="priority">By priority</button>
+        <button data-v="none">Flat</button>
+      </div>
+      <select id="f-sort"><option value="ai">Sort: AI % ↓</option><option value="prio">Sort: priority</option><option value="id">Sort: ID</option></select>
+    </div>
+
+    <p class="count-line" id="count-line"></p>
+    <div id="results"></div>
+  </main>
+
+  <footer>
+    INCYT spike programme · generated 2026-06-17 · drafts are prepared but <b>not sent/spent</b> without Simon's explicit go ·
+    add <span class="mono">#review</span> to the URL for review mode.
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
