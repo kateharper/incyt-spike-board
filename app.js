@@ -70,6 +70,89 @@ function sortTasks(list) {
   });
 }
 
+/* ---------------- markdown (compact) ---------------- */
+function mdInline(s) {
+  return s
+    .replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => {
+      const safe = /^(https?:|\/|\.|#|mailto:)/i.test(u) ? u : '#';
+      return `<a href="${safe}" target="_blank" rel="noopener">${t}</a>`;
+    });
+}
+function md(src) {
+  if (!src) return '';
+  const L = esc(src).split('\n');
+  let html = '', i = 0;
+  const isBlock = (s) => /^\s*(#{1,6}\s|[-*+]\s|\d+\.\s|>|\||---)/.test(s);
+  while (i < L.length) {
+    let line = L[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < L.length && /-/.test(L[i + 1]) && /^\s*\|?[\s:|-]+\|?\s*$/.test(L[i + 1])) {
+      const head = line; const rows = []; i += 2;
+      while (i < L.length && /\|/.test(L[i]) && L[i].trim() !== '') { rows.push(L[i]); i++; }
+      const cells = (r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+      html += '<table><thead><tr>' + cells(head).map((c) => `<th>${mdInline(c)}</th>`).join('') + '</tr></thead><tbody>' +
+        rows.map((r) => '<tr>' + cells(r).map((c) => `<td>${mdInline(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+      continue;
+    }
+    let h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { const lv = Math.min(h[1].length + 1, 4); html += `<h${lv}>${mdInline(h[2])}</h${lv}>`; i++; continue; }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) { html += '<hr>'; i++; continue; }
+    if (/^\s*>\s?/.test(line)) { const b = []; while (i < L.length && /^\s*>\s?/.test(L[i])) { b.push(L[i].replace(/^\s*>\s?/, '')); i++; } html += `<blockquote>${mdInline(b.join(' '))}</blockquote>`; continue; }
+    if (/^\s*[-*+]\s+/.test(line)) { const b = []; while (i < L.length && /^\s*[-*+]\s+/.test(L[i])) { b.push(L[i].replace(/^\s*[-*+]\s+/, '')); i++; } html += '<ul>' + b.map((x) => `<li>${mdInline(x)}</li>`).join('') + '</ul>'; continue; }
+    if (/^\s*\d+\.\s+/.test(line)) { const b = []; while (i < L.length && /^\s*\d+\.\s+/.test(L[i])) { b.push(L[i].replace(/^\s*\d+\.\s+/, '')); i++; } html += '<ol>' + b.map((x) => `<li>${mdInline(x)}</li>`).join('') + '</ol>'; continue; }
+    if (line.trim() === '') { i++; continue; }
+    const b = [line]; i++;
+    while (i < L.length && L[i].trim() !== '' && !isBlock(L[i])) { b.push(L[i]); i++; }
+    html += `<p>${mdInline(b.join(' '))}</p>`;
+  }
+  return html;
+}
+
+/* ---------------- detail slide-over ---------------- */
+function openDetail(id) {
+  const t = DATA.tasks.find((x) => x.id === id); if (!t) return;
+  const d = t.detail || {};
+  const rtg = isRTG(t);
+  const sect = (title, body, cls = '') => (body && body.trim()) ? `<div class="sect ${cls}"><h3>${title}</h3><div class="md">${md(body)}</div></div>` : '';
+  const arts = d.artifacts || [];
+  const artHtml = arts.length ? `<div class="sect"><h3>Artifacts in work/ (${d.artifactCount || arts.length})</h3><div class="artlist">` +
+    arts.map((a) => { const ext = (a.name.split('.').pop() || '?').slice(0, 4); return `<div class="art"><span class="ext">${esc(ext)}</span><span class="nm">${esc(a.name)}</span><span class="pth">${esc(a.path)}</span></div>`; }).join('') +
+    `</div>${(d.artifactCount || 0) > arts.length ? `<div class="art-note">+${d.artifactCount - arts.length} more in the repo</div>` : ''}</div>` : '';
+  $('#sheet-body').innerHTML = `
+    <div class="sheet-id">${esc(t.id)}</div>
+    <h2>${esc(t.title)}</h2>
+    <div class="sheet-chips">
+      <span class="pill prio" data-p="${esc(t.priority)}"><span class="dt"></span>${esc(t.priority)}</span>
+      <span class="pill owner">${esc(t.owner)}</span>
+      <span class="pill cs-${esc(t.companyStatus)}">${esc(CS[t.companyStatus] || t.companyStatus)}</span>
+      ${t.rescope ? '<span class="pill rescope">⚠ extend, not build</span>' : ''}
+      ${rtg ? '<span class="pill rtg-yes"><span class="dt"></span>RTG</span>' : '<span class="pill rtg-no">◌ awaiting review</span>'}
+    </div>
+    <div class="sheet-ai"><div class="ai-track"><div class="ai-fill" style="width:${t.aiPercent || 0}%"></div></div><span class="ai-val"><b>${t.aiPercent || 0}%</b> AI</span></div>
+    ${t.gate ? `<div class="sheet-gate">⛓ <b>Gate:</b> ${esc(t.gate)}</div>` : ''}
+    ${t.fastestNextStep ? `<div class="sect key"><h3>★ Fastest next step</h3><div class="md">${md(t.fastestNextStep)}</div></div>` : ''}
+    ${sect('Best next steps', d.bestNextSteps, 'key')}
+    ${sect('Residual — humans only', d.residual, 'warn-sect')}
+    ${sect('AI-completed work', d.aiCompleted)}
+    ${artHtml}
+    ${sect('Objective', d.objective)}
+    ${sect('Recommended approach / options', d.recommended)}
+    ${sect('Research findings', d.research)}
+    ${sect('Company knowledge — deep dive', d.companyKnowledge)}
+    <div class="sheet-foot">Full brief + all files in the repo: <code>${esc(d.briefPath || '')}</code></div>`;
+  const sh = $('#sheet');
+  sh.classList.add('open'); sh.setAttribute('aria-hidden', 'false'); sh.scrollTop = 0;
+  $('#sheet-backdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  if (history.replaceState) history.replaceState(null, '', '#' + id);
+}
+function closeDetail() {
+  $('#sheet').classList.remove('open'); $('#sheet').setAttribute('aria-hidden', 'true');
+  $('#sheet-backdrop').classList.remove('open'); document.body.style.overflow = '';
+  if (history.replaceState && /^#[A-Z]/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+}
+
 /* ---------------- rendering ---------------- */
 function card(t) {
   const rtg = isRTG(t);
@@ -80,8 +163,7 @@ function card(t) {
     ? `<span class="pill verdict-${esc(t.reviewVerdict)}">${t.reviewVerdict === 'revised' ? '📝 revised' : '🚩 flag'}</span>` : '';
   const reviewBtn = review
     ? `<button class="rtg-toggle ${rtg ? 'on' : ''}" data-id="${esc(t.id)}">${rtg ? '✓ RTG' : 'mark RTG'}</button>` : '';
-  const briefHref = t.briefPath ? `<a href="#" title="Brief lives in the repo: ${esc(t.briefPath)}" data-brief="${esc(t.briefPath)}">brief ↗</a>` : '';
-  return `<article class="card ${rtg ? 'rtg' : ''}">
+  return `<article class="card ${rtg ? 'rtg' : ''}" data-id="${esc(t.id)}">
     <div class="c-top">
       <span class="c-id">${esc(t.id)}</span>
       <span class="spacer"></span>
@@ -102,7 +184,7 @@ function card(t) {
     ${t.fastestNextStep ? `<div class="c-step"><span class="lab">Fastest next step</span>${esc(t.fastestNextStep)}</div>` : ''}
     ${t.gate ? `<div class="c-gate">⛓ <b>Gate:</b> ${esc(t.gate)}</div>` : ''}
     ${buckets ? `<div class="c-buckets">${buckets}</div>` : ''}
-    <div class="c-foot">${briefHref}${reviewBtn ? `<span class="spacer" style="flex:1"></span>${reviewBtn}` : ''}</div>
+    <div class="c-foot"><span class="open-hint">Open details →</span>${reviewBtn ? `<span class="spacer" style="flex:1"></span>${reviewBtn}` : ''}</div>
   </article>`;
 }
 
@@ -138,7 +220,7 @@ function render() {
     const o = loadOverrides(); const id = b.dataset.id;
     o[id] = !isRTG(DATA.tasks.find((t) => t.id === id)); saveOverrides(o); render(); renderAids(); renderStats();
   });
-  $$('[data-brief]').forEach((a) => a.onclick = (e) => { e.preventDefault(); toast('Brief: ' + a.dataset.brief); });
+  $$('#results .card').forEach((c) => c.onclick = (e) => { if (e.target.closest('button')) return; openDetail(c.dataset.id); });
 }
 
 function renderStats() {
@@ -238,6 +320,12 @@ function boot(data) {
   $('#gate').style.display = 'none';
   $('#app').classList.add('show');
   wire(); renderStats(); renderAids(); render();
+  $('#sheet-close').onclick = closeDetail;
+  $('#sheet-backdrop').onclick = closeDetail;
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+  // deep-link: #<TASK-ID> opens that task
+  const h = decodeURIComponent(location.hash.replace(/^#/, ''));
+  if (h && DATA.tasks.some((t) => t.id === h)) openDetail(h);
 }
 
 /* ---------------- gate ---------------- */
